@@ -46,8 +46,9 @@ namespace conet
   private:
     friend acceptor;
     friend connection;
-    int fd_{0};
-    explicit resolver(int fd) : fd_{fd} {}
+    int fd_;
+    std::string err_;
+    explicit resolver(int fd, const char* msg = "") : fd_{fd}, err_{msg} {}
 
     static resolver impl(const std::string& s, socktype f, bool is_passive, bool reuseaddr, bool reuseport)
     {
@@ -59,13 +60,13 @@ namespace conet
       addrinfo* addrs{nullptr};
 
       auto sep = s.find(':');
-      if(sep == std::string::npos) { throw std::runtime_error("invalid address"); }
+      if(sep == std::string::npos) { return resolver{-1, "invalid address"}; }
       auto port = s.substr(sep + 1);
       auto domain = s.substr(0, sep);
-      if(port.empty() || domain.empty()) { throw std::runtime_error("invalid address"); }
+      if(port.empty() || domain.empty()) { return resolver{-1, "invalid address"}; }
 
       int r = ::getaddrinfo(domain.data(), port.data(), &hints, &addrs);
-      if(r < 0) { throw std::runtime_error(::gai_strerror(r)); }
+      if(r < 0) { return resolver{-1, ::gai_strerror(r)}; }
       int fd = 0;
       for(auto p = addrs; p != nullptr; p = p->ai_next)
       {
@@ -88,27 +89,18 @@ namespace conet
         }
         else
         {
-          if(f == socktype::tcp)
-          {
-            if(::connect(fd, p->ai_addr, p->ai_addrlen) == 0)
-            {
-              int flag = ::fcntl(fd, F_GETFL, 0);
-              if(flag < 0)
-              {
-                fd = 0;
-                break;
-              }
-              if(::fcntl(fd, F_SETFL, flag | O_NONBLOCK) < 0) { fd = 0; }
-              break;
-            }
-          }
+          // connect for UDP too
+          if(::connect(fd, p->ai_addr, p->ai_addrlen) == 0) { break; }
         }
         ::close(fd);
         fd = 0;
       }
       int saved = errno;
       ::freeaddrinfo(addrs);
-      if(fd == 0) { throw std::runtime_error(::strerror(saved)); }
+      if(fd == 0) { return resolver{-1, ::strerror(saved)}; }
+      int flag = ::fcntl(fd, F_GETFL, 0);
+      if(flag < 0) { return resolver{-1, ::strerror(saved)}; }
+      if(::fcntl(fd, F_SETFL, flag | O_NONBLOCK) < 0) { return resolver{-1, ::strerror(saved)}; }
       return resolver{fd};
     }
 
@@ -119,6 +111,10 @@ namespace conet
     {
       return impl(s, f, true, reuseaddr, reuseport);
     }
+
+    explicit operator bool() const { return fd_ != -1; }
+
+    [[nodiscard]] const std::string& err() const { return err_; }
   };
 
   struct io_result

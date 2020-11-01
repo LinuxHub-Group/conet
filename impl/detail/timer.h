@@ -57,6 +57,7 @@ namespace conet::detail
 
     void tick()
     {
+      if(q_.empty()) { return; }
       auto t = curr_time();
       auto cur = key{t, (telem*)UINTPTR_MAX};
       auto end = q_.lower_bound(cur);

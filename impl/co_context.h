@@ -30,6 +30,7 @@ namespace conet
 
     context() : efd_{-1}, stop_{true}, revs_{1}, conn_{}, sig_{-1, nullptr}, timer_{}
     {
+      conn_.resize(5);
       efd_ = ::epoll_create1(EPOLL_CLOEXEC);
     }
     context(context&& r) noexcept
@@ -65,8 +66,7 @@ namespace conet
               sig_.second();
               continue;
             }
-            auto t = conn_.find(revs_[i].data.fd);
-            if(t != conn_.end()) { t->second.co.resume(); }
+            conn_[revs_[i].data.fd].co.resume();
           }
         }
       }
@@ -97,7 +97,7 @@ namespace conet
     int efd_;
     bool stop_;
     std::vector<epoll_event> revs_;
-    std::map<int, target> conn_;
+    std::vector<target> conn_;
     std::pair<int, std::function<void()>> sig_;
     detail::timer_queue timer_;
     std::vector<simple_co_handle_t> suspended_;
@@ -114,7 +114,7 @@ namespace conet
         ::close(efd_);
         efd_ = -1;
       }
-      for(auto& [_, v]: conn_)
+      for(auto& v: conn_)
       {
         if(v.ev != -1) { v.co.destroy(); }
       }
@@ -142,6 +142,10 @@ namespace conet
     int push(int fd, simple_co_handle_t& co, bool is_read = true)
     {
       co.promise().set_context(this); // promise maybe differ to task::set_context
+      if(conn_.size() <= fd)
+      {
+        conn_.resize(conn_.size()*2);
+      }
       auto& target = conn_[fd];
       int op = is_read ? EPOLLIN : EPOLLOUT;
       if(target.ev == op)
@@ -162,8 +166,7 @@ namespace conet
     // un-initialize for reusing
     void pop(int fd)
     {
-      auto iter = conn_.find(fd);
-      if(iter != conn_.end()) { iter->second.ev = -1; }
+      conn_[fd].ev = -1;
     }
     void recycle(simple_co_handle_t& co) { suspended_.push_back(co); }
   };

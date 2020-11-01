@@ -1,5 +1,5 @@
 /***********************************************
-        File Name: client.cpp.cpp
+        File Name: client.cpp
         Author: Abby Cin
         Mail: abbytsing@gmail.com
         Created Time: 10/25/20 8:29 PM
@@ -45,6 +45,11 @@ int main()
   for(int i = 0; i < 100; ++i)
   {
     auto r = resolver::client("127.0.0.1:8889", resolver::socktype::tcp);
+    if(!r)
+    {
+      debug(r.err());
+      return 1;
+    }
     ctx.launch(echo, connection{ctx, r}, msg);
   }
   ctx.run();
