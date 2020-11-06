@@ -14,27 +14,18 @@ namespace conet
   class connection;
   class signals;
 
-  template<typename F, typename... Args>
-  concept rocket = requires(F&& f, Args&&... args)
-  {
-    {
-      std::forward<F>(f)(std::forward<Args>(args)...)
-    }
-    ->std::same_as<task>;
-  };
-
   class context
   {
   public:
     using co_timer = detail::timer_queue;
 
-    context() : efd_{-1}, stop_{true}, revs_{1}, conn_{}, sig_{-1, nullptr}, timer_{}
+    context() : stop_{true}, efd_{-1}, revs_{1}, conn_{}, sig_{-1, nullptr}, timer_{}
     {
       conn_.resize(5);
       efd_ = ::epoll_create1(EPOLL_CLOEXEC);
     }
     context(context&& r) noexcept
-        : efd_{r.efd_}, stop_{r.stop_}, revs_{std::move(r.revs_)}, conn_{std::move(r.conn_)}, sig_{std::move(r.sig_)},
+        : stop_{r.stop_}, efd_{r.efd_}, revs_{std::move(r.revs_)}, conn_{std::move(r.conn_)}, sig_{std::move(r.sig_)},
           timer_{std::move(r.timer_)}
     {
       r.efd_ = -1;
@@ -42,44 +33,42 @@ namespace conet
     }
     ~context() { cleanup(); }
 
+    context& operator=(const context&) = delete;
+    context& operator=(context&& r) = delete;
+
     int run()
     {
       stop_ = false;
+      int res = 0;
       while(!stop_)
       {
-        errno = 0;
-        int res = ::epoll_wait(efd_, revs_.data(), revs_.size(), timer_.empty() ? -1 : 1);
+        res = run_once();
         if(res < 0) { return res; }
-        timer_.tick();
-        while(!suspended_.empty())
-        {
-          suspended_.back().destroy();
-          suspended_.pop_back();
-        }
-        for(int i = 0; i < res; ++i)
-        {
-          auto ev = revs_[i].events;
-          if((ev & EPOLLIN) || (ev & EPOLLOUT) || (ev & EPOLLPRI) || (ev & EPOLLHUP) || (ev & EPOLLERR))
-          {
-            if(revs_[i].data.fd == sig_.first)
-            {
-              sig_.second();
-              continue;
-            }
-            conn_[revs_[i].data.fd].co.resume();
-          }
-        }
       }
       return 0;
     }
 
     void stop() { stop_ = true; }
 
-    template<typename F, typename... Args>
-    requires rocket<F, Args...> void launch(F&& f, Args&&... args)
+    int run_once()
     {
-      auto t = std::forward<F>(f)(std::forward<Args>(args)...);
-      t.set_context(this);
+      int res = ::epoll_wait(efd_, revs_.data(), revs_.size(), timer_.empty() ? -1 : 1);
+      if(res < 0) { return res; }
+      timer_.tick();
+      for(int i = 0; i < res; ++i)
+      {
+        auto ev = revs_[i].events;
+        if((ev & EPOLLIN) || (ev & EPOLLOUT) || (ev & EPOLLPRI) || (ev & EPOLLHUP) || (ev & EPOLLERR))
+        {
+          if(revs_[i].data.fd == sig_.first)
+          {
+            sig_.second();
+            continue;
+          }
+          conn_[revs_[i].data.fd].co.resume();
+        }
+      }
+      return 0;
     }
 
     [[nodiscard]] bool running() const { return !stop_; }
@@ -91,21 +80,19 @@ namespace conet
     {
       target() : ev{-1}, co{nullptr} {}
       int ev;
-      simple_co_handle_t co;
+      std::coroutine_handle<> co;
     };
 
-    int efd_;
     bool stop_;
+    int efd_;
     std::vector<epoll_event> revs_;
     std::vector<target> conn_;
     std::pair<int, std::function<void()>> sig_;
     detail::timer_queue timer_;
-    std::vector<simple_co_handle_t> suspended_;
 
     friend acceptor;
     friend connection;
     friend signals;
-    friend task;
 
     void cleanup()
     {
@@ -114,16 +101,7 @@ namespace conet
         ::close(efd_);
         efd_ = -1;
       }
-      for(auto& v: conn_)
-      {
-        if(v.ev != -1) { v.co.destroy(); }
-      }
       conn_.clear();
-      while(!suspended_.empty())
-      {
-        suspended_.back().destroy();
-        suspended_.pop_back();
-      }
     }
 
     int trap(int fd, std::function<void()>&& cb)
@@ -139,13 +117,10 @@ namespace conet
 
     // NOTE: it's not necessary to remove from conn_, since epoll will automatically remove closed fd from interest set
     // and new peer will use the lowest fd number
-    int push(int fd, simple_co_handle_t& co, bool is_read = true)
+    int push(int fd, std::coroutine_handle<>& co, bool is_read = true)
     {
-      co.promise().set_context(this); // promise maybe differ to task::set_context
-      if(conn_.size() <= fd)
-      {
-        conn_.resize(conn_.size()*2);
-      }
+      if(fd < 0) { return -1; }
+      if(conn_.size() <= static_cast<size_t>(fd)) { conn_.resize(conn_.size() * 2); }
       auto& target = conn_[fd];
       int op = is_read ? EPOLLIN : EPOLLOUT;
       if(target.ev == op)
@@ -164,18 +139,8 @@ namespace conet
     }
 
     // un-initialize for reusing
-    void pop(int fd)
-    {
-      conn_[fd].ev = -1;
-    }
-    void recycle(simple_co_handle_t& co) { suspended_.push_back(co); }
+    void pop(int fd) { conn_[fd].ev = -1; }
   };
-
-  std::suspend_always task::promise_type::final_suspend()
-  {
-    if(ctx_) { ctx_->recycle(co_); }
-    return {};
-  }
 }
 
 #endif //_CONET_CONTEXT_H_

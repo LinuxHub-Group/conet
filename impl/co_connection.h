@@ -5,8 +5,8 @@
         Created Time: 10/26/20 10:46 PM
 ***********************************************/
 
-#ifndef _CO_CONNECTION_H_
-#define _CO_CONNECTION_H_
+#ifndef _CONET_CONNECTION_H_
+#define _CONET_CONNECTION_H_
 
 namespace conet
 {
@@ -24,14 +24,17 @@ namespace conet
 
       static constexpr bool await_ready() { return false; }
 
-      bool await_suspend(simple_co_handle_t& co)
+      bool await_suspend(std::coroutine_handle<>& co)
       {
         this_->push(co, true);
-        res_.err = 0;
         res_.size = ::read(fd_, data_, n_);
         if(res_.size == -1)
         {
-          if(errno == EWOULDBLOCK || errno == EAGAIN) { return true; }
+          if(errno == EWOULDBLOCK || errno == EAGAIN)
+          {
+            res_.size = 0;
+            return true;
+          }
           res_.err = errno;
         }
         if(res_.size == 0)
@@ -55,7 +58,7 @@ namespace conet
 
       static constexpr bool await_ready() { return false; }
 
-      bool await_suspend(simple_co_handle_t& co)
+      bool await_suspend(std::coroutine_handle<>& co)
       {
         this_->push(co, false);
         res_.err = 0;
@@ -104,12 +107,16 @@ namespace conet
 
     [[nodiscard]] int handle() const { return fd_; }
 
+    explicit operator bool() { return fd_ != -1; }
+
+    context& ctx() { return ctx_; }
+
   private:
     int fd_;
     context& ctx_;
 
-    void push(simple_co_handle_t& co, bool is_read) { ctx_.push(fd_, co, is_read); }
+    void push(std::coroutine_handle<>& co, bool is_read) { ctx_.push(fd_, co, is_read); }
   };
 }
 
-#endif //_CO_CONNECTION_H_
+#endif //_CONET_CONNECTION_H_

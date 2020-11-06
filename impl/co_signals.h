@@ -21,7 +21,7 @@ namespace conet
     static void ignore_handler(int) {}
 
   public:
-    explicit signals(context& ctx) : fd_{-1}, set_{}, ctx_{ctx}, co_{nullptr} { ::sigemptyset(&set_); }
+    explicit signals(context& ctx) : is_waiting_{false}, fd_{-1}, set_{}, ctx_{ctx} { ::sigemptyset(&set_); }
     ~signals()
     {
       if(fd_ > 0) { ::close(fd_); }
@@ -51,14 +51,20 @@ namespace conet
 
     void wait(co_signal_handler_cp auto cb)
     {
-      ctx_.trap(fd_, [this, cb = std::move(cb)] { this->handle_signal(cb, ctx_, fd_); });
+      if(!is_waiting_)
+      {
+        ctx_.trap(fd_, [this, cb = std::move(cb)] { this->handle_signal(cb, ctx_, fd_); });
+        is_waiting_ = true;
+      }
     }
 
+    context& ctx() { return ctx_; }
+
   private:
+    bool is_waiting_;
     int fd_;
     sigset_t set_;
     context& ctx_;
-    simple_co_handle_t co_;
 
     void handle_signal(co_signal_handler_cp auto&& cb, context& ctx, int& fd)
     {

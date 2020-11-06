@@ -6,11 +6,10 @@
 ***********************************************/
 
 #include "conet.h"
-#include <deque>
 
 using namespace conet;
 
-task session(connection&& tmp)
+task<> session(connection&& tmp)
 {
   connection client{std::move(tmp)};
   char data[128]{};
@@ -28,12 +27,14 @@ task session(connection&& tmp)
   }
 }
 
-task spawn(context& ctx, acceptor& a)
+task<> spawn(context& ctx, acceptor& a)
 {
   for(;;)
   {
-    ctx.launch(session, co_await a.accept());
-    if(!ctx.running()) { break; }
+    auto c = co_await a.accept();
+    if(!c) { break; }
+    auto t = session(std::move(c));
+    t.detach();
   }
 }
 
@@ -50,6 +51,6 @@ int main()
   });
   acceptor a{ctx, resolver::server("127.0.0.1:8889", resolver::socktype::tcp, true)};
   if(a.listen() < 0) { return 1; }
-  ctx.launch(spawn, ctx, a);
+  auto t = spawn(ctx, a); // coroutine will be destroyed by task<>::~task()
   ctx.run();
 }

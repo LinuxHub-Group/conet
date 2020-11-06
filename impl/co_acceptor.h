@@ -13,16 +13,26 @@ namespace conet
   class acceptor
   {
   public:
-    acceptor(context& ctx, resolver r) : fd_{r.fd_}, co_{nullptr}, ctx_{ctx} {}
-    ~acceptor() = default;
+    acceptor(context& ctx, resolver r) : fd_{r.fd_}, ctx_{ctx} {}
+    ~acceptor() { this->close(); }
 
     [[nodiscard]] int listen() const { return ::listen(fd_, SOMAXCONN); }
 
     auto accept() { return awaiter{this, ctx_, fd_}; }
 
+    void close()
+    {
+      if(fd_ > 0)
+      {
+        ::close(fd_);
+        fd_ = -1;
+      }
+    }
+
+    context& ctx() { return ctx_; }
+
   private:
     int fd_;
-    simple_co_handle_t co_;
     context& ctx_;
 
     struct awaiter
@@ -33,7 +43,7 @@ namespace conet
       awaiter(acceptor* me, context& ctx, int fd) : fd_{fd}, this_{me}, ctx_{ctx} {}
 
       static constexpr bool await_ready() { return false; }
-      void await_suspend(simple_co_handle_t co) { ctx_.push(fd_, co); }
+      void await_suspend(std::coroutine_handle<>& co) { ctx_.push(fd_, co); }
       connection await_resume()
       {
         int sock = ::accept4(fd_, nullptr, nullptr, SOCK_NONBLOCK);

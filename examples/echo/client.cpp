@@ -6,13 +6,11 @@
 ***********************************************/
 
 #include "conet.h"
-#include <vector>
-#include <memory>
 
 using namespace conet;
 
 int count = 0;
-task echo(connection&& tmp, const std::string& msg)
+task<> echo(connection&& tmp, const std::string& msg)
 {
   std::vector<char> recv(128);
   auto client = std::move(tmp);
@@ -36,11 +34,12 @@ int main()
     debug("signal:", num, "quit.");
     ctx.stop();
   });
-  ctx.timer().run_after(std::chrono::seconds(3), [&ctx](auto) {
+  ctx.timer().run_after(std::chrono::seconds(2), [&ctx](auto) {
     debug("stop.");
     ctx.stop();
   });
 
+  std::vector<task<>> tasks{};
   std::string msg{"are you ok?"};
   for(int i = 0; i < 100; ++i)
   {
@@ -50,7 +49,8 @@ int main()
       debug(r.err());
       return 1;
     }
-    ctx.launch(echo, connection{ctx, r}, msg);
+    auto t = echo(connection{ctx, r}, msg);
+    tasks.push_back(std::move(t)); // manage tasks by ourself
   }
   ctx.run();
   debug(count);
