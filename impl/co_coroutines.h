@@ -265,7 +265,7 @@ namespace conet
     struct task_awaiter<void>
     {
       co_handle_t<> co;
-      constexpr static bool await_read() { return false; }
+      constexpr static bool await_ready() { return false; }
       co_handle_t<> await_suspend(co_handle_t<>& h)
       {
         co.promise().co = h;
