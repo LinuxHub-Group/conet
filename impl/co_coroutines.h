@@ -139,18 +139,18 @@ namespace conet
 
       std::suspend_never initial_suspend() { return {}; }
 
-      auto final_suspend()
+      auto final_suspend() noexcept
       {
         struct final_awaiter
         {
           bool ready;
-          bool await_ready() { return ready; }
-          void await_suspend(co_handle_t<T>& h)
+          bool await_ready() noexcept { return ready; }
+          void await_suspend(co_handle_t<T>& h) noexcept
           {
             auto& co = h.promise().co;
             if(co && !co.done()) { co.resume(); }
           }
-          void await_resume() {}
+          void await_resume() noexcept {}
         };
         return final_awaiter{detached};
       }
@@ -208,18 +208,18 @@ namespace conet
 
       std::suspend_never initial_suspend() { return {}; }
 
-      auto final_suspend()
+      auto final_suspend() noexcept
       {
         struct final_awaiter
         {
           bool ready;
-          bool await_ready() { return ready; }
-          void await_suspend(co_handle_t<>& h)
+          bool await_ready() noexcept { return ready; }
+          void await_suspend(co_handle_t<>& h) noexcept
           {
             auto& co = h.promise().co;
             if(co && !co.done()) { co.resume(); }
           }
-          void await_resume() {}
+          void await_resume() noexcept {}
         };
         return final_awaiter{detached};
       }
