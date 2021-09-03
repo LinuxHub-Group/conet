@@ -117,7 +117,7 @@ namespace conet
 
     // NOTE: it's not necessary to remove from conn_, since epoll will automatically remove closed fd from interest set
     // and new peer will use the lowest fd number
-    int push(int fd, std::coroutine_handle<>& co, bool is_read = true)
+    int push(int fd, const std::coroutine_handle<>& co, bool is_read = true)
     {
       if(fd < 0) { return -1; }
       if(conn_.size() <= static_cast<size_t>(fd)) { conn_.resize(conn_.size() * 2); }

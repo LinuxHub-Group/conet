@@ -24,7 +24,7 @@ namespace conet
 
       static constexpr bool await_ready() { return false; }
 
-      bool await_suspend(std::coroutine_handle<>& co)
+      bool await_suspend(const std::coroutine_handle<>& co)
       {
         this_->push(co, true);
         res_.size = ::read(fd_, data_, n_);
@@ -58,7 +58,7 @@ namespace conet
 
       static constexpr bool await_ready() { return false; }
 
-      bool await_suspend(std::coroutine_handle<>& co)
+      bool await_suspend(const std::coroutine_handle<>& co)
       {
         this_->push(co, false);
         res_.err = 0;
@@ -115,7 +115,7 @@ namespace conet
     int fd_;
     context& ctx_;
 
-    void push(std::coroutine_handle<>& co, bool is_read) { ctx_.push(fd_, co, is_read); }
+    void push(const std::coroutine_handle<>& co, bool is_read) { ctx_.push(fd_, co, is_read); }
   };
 }
 

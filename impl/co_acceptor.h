@@ -43,7 +43,7 @@ namespace conet
       awaiter(acceptor* me, context& ctx, int fd) : fd_{fd}, this_{me}, ctx_{ctx} {}
 
       static constexpr bool await_ready() { return false; }
-      void await_suspend(std::coroutine_handle<>& co) { ctx_.push(fd_, co); }
+      void await_suspend(const std::coroutine_handle<>& co) { ctx_.push(fd_, co); }
       connection await_resume()
       {
         int sock = ::accept4(fd_, nullptr, nullptr, SOCK_NONBLOCK);
